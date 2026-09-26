@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<section class="panel">
+    <h2>Search</h2>
+    <form method="get" action="{{ url_for('index') }}" class="inline-form">
+        <input type="text" name="q" placeholder="Search by name, phone, or email" value="{{ keyword }}">
+        <button type="submit">Search</button>
+        {% if keyword %}<a href="{{ url_for('index') }}">Clear</a>{% endif %}
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Contacts {% if keyword %}(matching "{{ keyword }}"){% endif %}</h2>
+    {% if contacts %}
+        <table>
+            <thead>
+                <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for contact_id, info in contacts.items() %}
+                <tr>
+                    <td>{{ contact_id }}</td>
+                    <td>{{ info.name }}</td>
+                    <td>{{ info.phone }}</td>
+                    <td>{{ info.email }}</td>
+                    <td class="row-actions">
+                        <a href="{{ url_for('edit_contact', contact_id=contact_id) }}">Edit</a>
+                        <form method="post" action="{{ url_for('delete_contact', contact_id=contact_id) }}"
+                              onsubmit="return confirm('Delete contact {{ info.name }}?');">
+                            <button type="submit" class="link-button">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No contacts found.</p>
+    {% endif %}
+</section>
+
+<div class="grid">
+    <section class="panel">
+        <h2>Add Contact</h2>
+        <form method="post" action="{{ url_for('add_contact') }}">
+            <label>Name <input type="text" name="name" required></label>
+            <label>Phone <input type="text" name="phone" placeholder="e.g. 9876543210" required></label>
+            <label>Email <input type="email" name="email" required></label>
+            <button type="submit">Add Contact</button>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Export / Import</h2>
+        <p><a href="{{ url_for('export_contacts') }}">Download all contacts as CSV</a></p>
+        <form method="post" action="{{ url_for('import_contacts') }}" enctype="multipart/form-data">
+            <label>Import CSV (columns: name, phone, email)
+                <input type="file" name="csv_file" accept=".csv" required>
+            </label>
+            <button type="submit">Import</button>
+        </form>
+    </section>
+</div>
+
+{% endblock %}

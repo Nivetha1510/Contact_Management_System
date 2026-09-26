@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<section class="panel">
+    <h2>Edit Contact #{{ contact_id }}</h2>
+    <form method="post" action="{{ url_for('edit_contact', contact_id=contact_id) }}">
+        <label>Name <input type="text" name="name" value="{{ contact.name }}" required></label>
+        <label>Phone <input type="text" name="phone" value="{{ contact.phone }}" required></label>
+        <label>Email <input type="email" name="email" value="{{ contact.email }}" required></label>
+        <button type="submit">Save Changes</button>
+    </form>
+    <p><a href="{{ url_for('index') }}">&larr; Back to contacts</a></p>
+</section>
+
+{% endblock %}
