@@ -8,12 +8,15 @@ by the Flask app instead of running as a script.
 Author: Nivetha S
 """
 
+import copy
 import json
 import csv
 import os
 import re
 
 JSON_FILE = "contacts.json"
+MIN_NAME_LENGTH = 3
+NAME_LENGTH_MESSAGE = f"Name must be at least {MIN_NAME_LENGTH} characters."
 
 # Regex patterns
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -27,10 +30,16 @@ def is_valid_email(email):
     return bool(EMAIL_PATTERN.match(email))
 
 
+PHONE_PATTERN_10 = re.compile(r"(\+[0-9]{1,3}[ -]?)?[0-9]{10}")
+
+
+def is_valid_name(name):
+    return len(name.strip()) >= MIN_NAME_LENGTH
+
+
 def is_valid_phone(phone):
-    # Normalize by stripping spaces/dashes for a simpler core check too
-    digits_only = re.sub(r"[^\d+]", "", phone)
-    return bool(re.match(r"^\+?\d{10,13}$", digits_only))
+    """A 10-digit number, optionally preceded by a country code like +91 or +1-."""
+    return bool(PHONE_PATTERN_10.fullmatch(phone.strip()))
 
 
 # --------------------------------------------------------------------
@@ -49,11 +58,19 @@ def load_contacts():
 
 
 def save_contacts(contacts):
+    """Write contacts to JSON. Raises OSError if the file cannot be written."""
+    with open(JSON_FILE, "w") as f:
+        json.dump(contacts, f, indent=4)
+
+
+def _save_or_rollback(contacts, snapshot):
+    """Save; if that fails, restore the in-memory dict from snapshot and re-raise."""
     try:
-        with open(JSON_FILE, "w") as f:
-            json.dump(contacts, f, indent=4)
-    except IOError as e:
-        print(f"Error saving contacts: {e}")
+        save_contacts(contacts)
+    except OSError:
+        contacts.clear()
+        contacts.update(snapshot)
+        raise
 
 
 # --------------------------------------------------------------------
@@ -76,33 +93,37 @@ def import_from_csv(contacts, filepath):
     """
     Import contacts from a CSV file with columns: name, phone, email
     (id column optional/ignored - new IDs are always generated to avoid collisions).
-    Returns (added_count, skipped_count).
+    Returns (added_count, skipped_count). Rows with a missing or invalid
+    value are skipped and counted. Raises OSError if the result cannot be saved.
     """
     if not os.path.exists(filepath):
         print(f"File '{filepath}' not found.")
         return 0, 0
 
+    snapshot = copy.deepcopy(contacts)
     added, skipped = 0, 0
     try:
         with open(filepath, "r", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                name = row.get("name", "").strip()
-                phone = row.get("phone", "").strip()
-                email = row.get("email", "").strip()
+                # DictReader gives None for cells missing from short rows
+                name = (row.get("name") or "").strip()
+                phone = (row.get("phone") or "").strip()
+                email = (row.get("email") or "").strip()
 
-                if not name or not is_valid_phone(phone) or not is_valid_email(email):
+                if not is_valid_name(name) or not is_valid_phone(phone) or not is_valid_email(email):
                     skipped += 1
                     continue
 
                 new_id = generate_id(contacts)
                 contacts[new_id] = {"name": name, "phone": phone, "email": email}
                 added += 1
-        save_contacts(contacts)
-        return added, skipped
     except (IOError, csv.Error) as e:
         print(f"Error importing CSV: {e}")
-        return added, skipped
+
+    if added:
+        _save_or_rollback(contacts, snapshot)
+    return added, skipped
 
 
 # --------------------------------------------------------------------
@@ -117,8 +138,11 @@ def generate_id(contacts):
 
 
 def create_contact(contacts, name, phone, email):
-    if not name.strip():
+    name, phone, email = name.strip(), phone.strip(), email.strip()
+    if not name:
         raise ValueError("Name cannot be empty.")
+    if not is_valid_name(name):
+        raise ValueError(NAME_LENGTH_MESSAGE)
     if not is_valid_phone(phone):
         raise ValueError(f"Invalid phone number: '{phone}'.")
     if not is_valid_email(email):
@@ -130,8 +154,12 @@ def create_contact(contacts, name, phone, email):
             raise ValueError(f"Contact '{name}' with this phone number already exists.")
 
     contact_id = generate_id(contacts)
-    contacts[contact_id] = {"name": name.strip(), "phone": phone.strip(), "email": email.strip()}
-    save_contacts(contacts)
+    contacts[contact_id] = {"name": name, "phone": phone, "email": email}
+    try:
+        save_contacts(contacts)
+    except OSError:
+        del contacts[contact_id]
+        raise
     return contact_id
 
 
@@ -154,26 +182,41 @@ def search_contacts(contacts, keyword):
 
 
 def update_contact(contacts, contact_id, name=None, phone=None, email=None):
+    """
+    Update the given fields (None = leave unchanged). A blank string is
+    rejected. All inputs are validated before anything is changed.
+    """
     if contact_id not in contacts:
         raise KeyError(f"Contact ID '{contact_id}' not found.")
 
-    contact = contacts[contact_id]
-    if name is not None and name.strip():
-        contact["name"] = name.strip()
-    if phone is not None and phone.strip():
+    changes = {}
+    if name is not None:
+        if not name.strip():
+            raise ValueError("Name cannot be empty.")
+        if not is_valid_name(name):
+            raise ValueError(NAME_LENGTH_MESSAGE)
+        changes["name"] = name.strip()
+    if phone is not None:
+        if not phone.strip():
+            raise ValueError("Phone number cannot be empty.")
         if not is_valid_phone(phone):
             raise ValueError(f"Invalid phone number: '{phone}'.")
-        contact["phone"] = phone.strip()
-    if email is not None and email.strip():
-        if not is_valid_email(email):
+        changes["phone"] = phone.strip()
+    if email is not None:
+        if not email.strip():
+            raise ValueError("Email address cannot be empty.")
+        if not is_valid_email(email.strip()):
             raise ValueError(f"Invalid email address: '{email}'.")
-        contact["email"] = email.strip()
+        changes["email"] = email.strip()
 
-    save_contacts(contacts)
+    snapshot = copy.deepcopy(contacts)
+    contacts[contact_id].update(changes)
+    _save_or_rollback(contacts, snapshot)
 
 
 def delete_contact(contacts, contact_id):
     if contact_id not in contacts:
         raise KeyError(f"Contact ID '{contact_id}' not found.")
+    snapshot = copy.deepcopy(contacts)
     del contacts[contact_id]
-    save_contacts(contacts)
+    _save_or_rollback(contacts, snapshot)

@@ -12,6 +12,15 @@ form label { display: block; margin-bottom: 0.75rem; font-size: 0.85rem; }
 form input { display: block; width: 100%; margin-top: 0.25rem; padding: 0.4rem 0.5rem; border: 1px solid #cbd2d9; border-radius: 4px; }
 .inline-form { display: flex; gap: 0.5rem; align-items: center; }
 .inline-form input { width: auto; flex: 1; }
+.search-box { position: relative; flex: 1; }
+.search-box input { width: 100%; margin-top: 0; }
+.suggestions { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; margin: 2px 0 0; padding: 0; list-style: none; background: #fff; border: 1px solid #cbd2d9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.12); max-height: 320px; overflow-y: auto; }
+.suggestions li { display: flex; flex-direction: column; padding: 0.45rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f0f2f4; }
+.suggestions li:last-child { border-bottom: none; }
+.suggestions li:hover, .suggestions li.active { background: #eaf1ff; }
+.s-name { font-size: 0.9rem; }
+.s-detail { font-size: 0.75rem; color: #616e7c; }
+.suggestions mark { background: #fff3b0; color: inherit; padding: 0; }
 button, .link-button { background: #2f6feb; color: #fff; border: none; padding: 0.45rem 0.9rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
 .link-button { background: #d64545; }
 .row-actions { display: flex; gap: 0.5rem; align-items: center; }

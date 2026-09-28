@@ -11,7 +11,7 @@ Then open http://127.0.0.1:5000
 """
 
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from werkzeug.utils import secure_filename
 import contact_core as core
 
@@ -20,6 +20,7 @@ app.secret_key = "replace-this-with-a-random-secret-key"
 
 UPLOAD_FOLDER = "uploads"
 EXPORT_FOLDER = "exports"
+SUGGESTION_LIMIT = 8
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
 
@@ -35,6 +36,16 @@ def index():
     return render_template("index.html", contacts=results, keyword=keyword)
 
 
+@app.route("/suggest")
+def suggest():
+    """JSON list of contacts matching the typed text, for the search dropdown."""
+    keyword = request.args.get("q", "").strip()
+    if not keyword:
+        return jsonify([])
+    matches = core.search_contacts(contacts, keyword)
+    return jsonify([{"id": cid, **info} for cid, info in list(matches.items())[:SUGGESTION_LIMIT]])
+
+
 @app.route("/add", methods=["POST"])
 def add_contact():
     name = request.form.get("name", "").strip()
@@ -45,6 +56,8 @@ def add_contact():
         flash(f"Contact added successfully with ID {contact_id}.", "success")
     except ValueError as e:
         flash(str(e), "error")
+    except OSError as e:
+        flash(f"Could not save the contact: {e}", "error")
     return redirect(url_for("index"))
 
 
@@ -62,11 +75,13 @@ def edit_contact(contact_id):
         email = request.form.get("email", "").strip()
         try:
             core.update_contact(contacts, contact_id,
-                                 name=name or None, phone=phone or None, email=email or None)
+                                 name=name, phone=phone, email=email)
             flash("Contact updated successfully.", "success")
             return redirect(url_for("index"))
         except ValueError as e:
             flash(str(e), "error")
+        except OSError as e:
+            flash(f"Could not save the changes: {e}", "error")
 
     return render_template("edit.html", contact_id=contact_id, contact=existing)
 
@@ -78,6 +93,8 @@ def delete_contact(contact_id):
         flash(f"Contact ID {contact_id} deleted.", "success")
     except KeyError as e:
         flash(str(e), "error")
+    except OSError as e:
+        flash(f"Could not save the changes: {e}", "error")
     return redirect(url_for("index"))
 
 
@@ -103,7 +120,11 @@ def import_contacts():
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
 
-    added, skipped = core.import_from_csv(contacts, filepath)
+    try:
+        added, skipped = core.import_from_csv(contacts, filepath)
+    except OSError as e:
+        flash(f"Import failed, contacts could not be saved: {e}", "error")
+        return redirect(url_for("index"))
     flash(f"Import complete: {added} added, {skipped} skipped (invalid or missing data).", "success")
     return redirect(url_for("index"))
 
